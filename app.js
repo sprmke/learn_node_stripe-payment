@@ -10,6 +10,8 @@ const csrf = require('csurf');
 const flash = require('connect-flash');
 const multer = require('multer');
 
+dotenv.config();
+
 // Routes
 const adminRoutes = require('./routes/admin');
 const shopRoutes = require('./routes/shop');
@@ -20,8 +22,6 @@ const errorController = require('./controllers/error');
 
 // Models
 const User = require('./models/user');
-
-dotenv.config();
 
 const app = express();
 const store = new MongoDBStore({

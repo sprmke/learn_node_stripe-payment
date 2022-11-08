@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const PDFDocument = require('pdfkit');
 
@@ -133,21 +134,49 @@ exports.postCartDeleteProduct = (req, res, next) => {
 };
 
 exports.getCheckout = (req, res, next) => {
+  let products;
+  let totalSum = 0;
+
   req.user
     .populate('cart.items.productId')
     .execPopulate()
     .then((user) => {
-      const products = user.cart.items;
-      const totalSum = products.reduce(
-        (total, { quantity, productId }) => total + quantity * productId.price,
+      products = user.cart.items;
+      totalSum = products.reduce(
+        (total, { quantity, productId }) =>
+          total + +quantity * +productId.price,
         0
       );
 
+      return stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        line_items: products.map(({ quantity, productId }) => {
+          const { title, description, price } = productId;
+          return {
+            quantity: quantity,
+            price_data: {
+              currency: 'usd',
+              unit_amount: +price * 100,
+              product_data: {
+                name: title,
+                description: description,
+              },
+            },
+          };
+        }),
+        customer_email: req.user.email,
+        success_url: `${req.protocol}://${req.get('host')}/checkout/success`,
+        cancel_url: `${req.protocol}://${req.get('host')}/checkout/cancel`,
+      });
+    })
+    .then((session) => {
       res.render('shop/checkout', {
         path: '/checkout',
         pageTitle: 'Checkout',
         products: products,
         totalSum,
+        sessionId: session.id,
       });
     })
     .catch((err) => {
@@ -157,7 +186,7 @@ exports.getCheckout = (req, res, next) => {
     });
 };
 
-exports.postOrder = (req, res, next) => {
+exports.getCheckoutSuccess = (req, res, next) => {
   req.user
     .populate('cart.items.productId')
     .execPopulate()
